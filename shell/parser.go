@@ -1,6 +1,13 @@
 package main
 
-import "strings"
+import (
+	"strings"
+)
+
+type command struct {
+	name string
+	args []string
+}
 
 func parse(line string) (command, bool, error) {
 	fields := strings.Fields(line)

@@ -1,4 +1,4 @@
-module yanmifeakeju.com/smallgo/shell
+module github.com/yanmifeakeju/codecafter-go/shell
 
 go 1.26.2
 

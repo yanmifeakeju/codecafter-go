@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 
 	"golang.org/x/term"
 )
@@ -12,13 +13,20 @@ import (
 var errExit = errors.New("exit")
 
 type shell struct {
-	term       *term.Terminal
-	in         io.Reader
-	out        io.Writer
-	err        io.Writer
+	term *term.Terminal
+	str  stream
+
 	fd         int
 	isTerminal bool
 	oldState   *term.State
+
+	builtins map[string]builtinFunc
+}
+
+type stream struct {
+	in  io.Reader
+	out io.Writer
+	err io.Writer
 }
 
 func (s *shell) enterRawMode() error {
@@ -45,15 +53,45 @@ func (s *shell) exitRawMode() error {
 	return err
 }
 
+func (s *shell) execute(line string) error {
+	cmd, ok, err := parse(line)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	return s.runCommand(cmd, s.str)
+}
+
+func (s *shell) runCommand(cmd command, std stream) error {
+	if builtin, ok := s.builtins[cmd.name]; ok {
+		return builtin(s, cmd.args, std)
+	}
+	return s.runExternal(cmd, std)
+}
+
+func (s *shell) runExternal(cmd command, std stream) error {
+	path, err := exec.LookPath(cmd.name)
+	if err != nil {
+		fmt.Fprintf(std.err, "shell: %s: command not found\n", cmd.name)
+		return nil
+	}
+
+	proc := exec.Command(path, cmd.args...)
+	proc.Stdin = std.in
+	proc.Stdout = std.out
+	proc.Stderr = std.err
+	return proc.Run()
+}
+
 func newShell(c config) (*shell, error) {
 	c = normalizeConfig(c)
 
-	s := &shell{
-		term: term.NewTerminal(&readWriter{c.r, c.w}, c.prompt),
-		in:   c.r,
-		out:  c.w,
-		err:  c.err,
-	}
+	s := &shell{}
+	s.term = term.NewTerminal(&readWriter{c.r, c.w}, c.prompt)
+	s.str = stream{in: c.r, out: c.w, err: c.err}
+	s.builtins = defaultBuiltins()
 
 	if f, ok := c.r.(*os.File); ok {
 		fd := int(f.Fd())
@@ -84,7 +122,7 @@ func run(c config) error {
 		}
 
 		if err == io.EOF {
-			fmt.Fprintln(s.out)
+			fmt.Fprintln(s.str.out)
 			return nil
 		}
 
@@ -94,26 +132,20 @@ func run(c config) error {
 
 		cmd, ok, err := parse(line)
 		if err != nil {
-			fmt.Fprintf(s.err, "%v\n", err)
+			fmt.Fprintf(s.str.err, "%v\n", err)
 			continue
-		}
-
-		ctx := execContext{
-			stdin:  s.in,
-			stdout: s.out,
-			stderr: s.err,
 		}
 
 		if !ok {
 			continue
 		}
 
-		if err := cmd.run(s, ctx); err != nil {
+		if err := s.execute(line); err != nil {
 			if errors.Is(err, errExit) {
 				return nil
 			}
 
-			fmt.Fprintf(ctx.stderr, "%s: %v\n", cmd.name, err)
+			fmt.Fprintf(s.str.err, "%s: %v\n", cmd.name, err)
 			continue
 		}
 	}
