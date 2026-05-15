@@ -130,22 +130,11 @@ func run(c config) error {
 			return err
 		}
 
-		cmd, ok, err := parse(line)
-		if err != nil {
-			fmt.Fprintf(s.str.err, "%v\n", err)
-			continue
-		}
-
-		if !ok {
-			continue
-		}
-
 		if err := s.execute(line); err != nil {
 			if errors.Is(err, errExit) {
 				return nil
 			}
-
-			fmt.Fprintf(s.str.err, "%s: %v\n", cmd.name, err)
+			fmt.Fprintln(s.str.err, err)
 			continue
 		}
 	}
