@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/yanmifeakeju/codecafter-go/redis/internal/command"
-	"github.com/yanmifeakeju/codecafter-go/redis/internal/dict"
 	"github.com/yanmifeakeju/codecafter-go/redis/internal/server"
 	"github.com/yanmifeakeju/codecafter-go/redis/internal/store"
 )
@@ -14,8 +13,7 @@ func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
-	d := dict.New()
-	s := store.New(d)
+	s := store.New()
 	c := command.New(s)
 
 	port := os.Getenv("REDIS_PORT")

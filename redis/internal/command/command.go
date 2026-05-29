@@ -16,7 +16,7 @@ type Command struct {
 
 func New(s *store.Store) *Command {
 	if s == nil {
-		s = store.New(nil)
+		panic("Store is nil")
 	}
 
 	return &Command{store: s}

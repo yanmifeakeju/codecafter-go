@@ -6,20 +6,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yanmifeakeju/codecafter-go/redis/internal/dict"
-	"github.com/yanmifeakeju/codecafter-go/redis/internal/list"
 	"github.com/yanmifeakeju/codecafter-go/redis/internal/store"
 )
 
+type storeTestCase struct {
+	name  string
+	setup func(*store.Store) error
+	test  func(t *testing.T, s *store.Store)
+}
+
+type blpopResult struct {
+	value string
+	ok    bool
+	err   error
+}
+
 func TestStoreString(t *testing.T) {
-	testCases := []struct {
-		name string
-		dict *dict.Dict
-		test func(t *testing.T, s *store.Store)
-	}{
+	testCases := []storeTestCase{
 		{
 			name: "set key and read",
-			dict: nil,
 			test: func(t *testing.T, s *store.Store) {
 				key := "foo"
 				value := "bar"
@@ -42,7 +47,6 @@ func TestStoreString(t *testing.T) {
 		},
 		{
 			name: "get missing key",
-			dict: nil,
 			test: func(t *testing.T, s *store.Store) {
 				key := "foo"
 
@@ -62,8 +66,8 @@ func TestStoreString(t *testing.T) {
 			},
 		},
 		{
-			name: "get wrong type for key",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindList, Data: list.New()}),
+			name:  "get wrong type for key",
+			setup: setupList("foo", "bar"),
 			test: func(t *testing.T, s *store.Store) {
 				key := "foo"
 
@@ -83,24 +87,14 @@ func TestStoreString(t *testing.T) {
 			},
 		},
 	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			s := store.New(tc.dict)
-			tc.test(t, s)
-		})
-	}
+	runStoreTests(t, testCases)
 }
 
 func TestStoreListPushRange(t *testing.T) {
-	testCases := []struct {
-		name string
-		dict *dict.Dict
-		test func(t *testing.T, s *store.Store)
-	}{
+	testCases := []storeTestCase{
 		{
-			name: "list operations on non-list",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindString, Data: "hello"}),
+			name:  "list operations on non-list",
+			setup: setupString("foo", "hello", time.Time{}),
 			test: func(t *testing.T, s *store.Store) {
 				key := "foo"
 
@@ -139,7 +133,6 @@ func TestStoreListPushRange(t *testing.T) {
 		},
 		{
 			name: "rpush creates list",
-			dict: nil,
 			test: func(t *testing.T, s *store.Store) {
 				key := "foo"
 
@@ -175,8 +168,8 @@ func TestStoreListPushRange(t *testing.T) {
 			},
 		},
 		{
-			name: "rpush appends to existing list",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindList, Data: list.New("bar")}),
+			name:  "rpush appends to existing list",
+			setup: setupList("foo", "bar"),
 			test: func(t *testing.T, s *store.Store) {
 				key := "foo"
 
@@ -213,7 +206,6 @@ func TestStoreListPushRange(t *testing.T) {
 		},
 		{
 			name: "lpush creates list",
-			dict: nil,
 			test: func(t *testing.T, s *store.Store) {
 				key := "foo"
 
@@ -249,8 +241,8 @@ func TestStoreListPushRange(t *testing.T) {
 			},
 		},
 		{
-			name: "lpush prepends to existing list",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindList, Data: list.New("bar")}),
+			name:  "lpush prepends to existing list",
+			setup: setupList("foo", "bar"),
 			test: func(t *testing.T, s *store.Store) {
 				key := "foo"
 
@@ -287,7 +279,6 @@ func TestStoreListPushRange(t *testing.T) {
 		},
 		{
 			name: "range and len on missing key",
-			dict: nil,
 			test: func(t *testing.T, s *store.Store) {
 				i, err := s.LRange("foo", 0, -1)
 				if err != nil {
@@ -310,7 +301,6 @@ func TestStoreListPushRange(t *testing.T) {
 		},
 		{
 			name: "lrange normal bound",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindList, Data: list.New()}),
 			test: func(t *testing.T, s *store.Store) {
 				n, err := s.RPush("foo", "a", "b", "c")
 
@@ -335,7 +325,6 @@ func TestStoreListPushRange(t *testing.T) {
 		},
 		{
 			name: "lrange negative bound",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindList, Data: list.New()}),
 			test: func(t *testing.T, s *store.Store) {
 				n, err := s.RPush("foo", "a", "b", "c")
 
@@ -359,24 +348,14 @@ func TestStoreListPushRange(t *testing.T) {
 			},
 		},
 	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			s := store.New(tc.dict)
-			tc.test(t, s)
-		})
-	}
+	runStoreTests(t, testCases)
 }
 
 func TestStoreListPop(t *testing.T) {
-	testCases := []struct {
-		name string
-		dict *dict.Dict
-		test func(t *testing.T, s *store.Store)
-	}{
+	testCases := []storeTestCase{
 		{
-			name: "pop operations on a non-list",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindString, Data: "hello"}),
+			name:  "pop operations on a non-list",
+			setup: setupString("foo", "hello", time.Time{}),
 			test: func(t *testing.T, s *store.Store) {
 				_, ok, err := s.LPop("foo")
 				if !errors.Is(err, store.ErrWrongType) {
@@ -408,7 +387,6 @@ func TestStoreListPop(t *testing.T) {
 		},
 		{
 			name: "pop operations on missing key",
-			dict: nil,
 			test: func(t *testing.T, s *store.Store) {
 				v, ok, err := s.LPop("foo")
 
@@ -435,8 +413,8 @@ func TestStoreListPop(t *testing.T) {
 			},
 		},
 		{
-			name: "lpop on existing list",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindList, Data: list.New("a", "b", "c")}),
+			name:  "lpop on existing list",
+			setup: setupList("foo", "a", "b", "c"),
 			test: func(t *testing.T, s *store.Store) {
 				v, ok, err := s.LPop("foo")
 
@@ -473,8 +451,8 @@ func TestStoreListPop(t *testing.T) {
 			},
 		},
 		{
-			name: "lpopn count less than length",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindList, Data: list.New("a", "b", "c", "d")}),
+			name:  "lpopn count less than length",
+			setup: setupList("foo", "a", "b", "c", "d"),
 			test: func(t *testing.T, s *store.Store) {
 				items, err := s.LPopN("foo", 2)
 
@@ -503,8 +481,8 @@ func TestStoreListPop(t *testing.T) {
 			},
 		},
 		{
-			name: "lpopn count greater than length",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindList, Data: list.New("a", "b", "c", "d")}),
+			name:  "lpopn count greater than length",
+			setup: setupList("foo", "a", "b", "c", "d"),
 			test: func(t *testing.T, s *store.Store) {
 				items, err := s.LPopN("foo", 10)
 
@@ -532,8 +510,8 @@ func TestStoreListPop(t *testing.T) {
 			},
 		},
 		{
-			name: "lpopn zero count",
-			dict: dictWithValue("foo", dict.Value{Kind: dict.KindList, Data: list.New("a", "b", "c")}),
+			name:  "lpopn zero count",
+			setup: setupList("foo", "a", "b", "c"),
 			test: func(t *testing.T, s *store.Store) {
 				items, err := s.LPopN("foo", 0)
 
@@ -557,29 +535,216 @@ func TestStoreListPop(t *testing.T) {
 			},
 		},
 	}
+	runStoreTests(t, testCases)
+}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			s := store.New(tc.dict)
-			tc.test(t, s)
-		})
+func TestStoreListBLPop(t *testing.T) {
+	testCases := []storeTestCase{
+		{
+			name: "blpop immediate pop",
+			test: func(t *testing.T, s *store.Store) {
+				_, err := s.RPush("foo", "a", "b")
+				if err != nil {
+					t.Fatalf("RPush() error = %v, want nil", err)
+				}
+
+				value, ok, err := s.BLPop("foo", 0)
+				if err != nil {
+					t.Fatalf("BLPop() error = %v, want nil", err)
+				}
+
+				if !ok {
+					t.Fatalf("BLPop() ok = false, want true")
+				}
+
+				if value != "a" {
+					t.Fatalf("BLPop() = %q, want %q", value, "a")
+				}
+
+				items, err := s.LRange("foo", 0, -1)
+				if err != nil {
+					t.Fatalf("LRange() error = %v, want nil", err)
+				}
+
+				want := []string{"b"}
+
+				if !reflect.DeepEqual(items, want) {
+					t.Fatalf("LRange() = %#v, want %#v", items, want)
+				}
+			},
+		},
+		{
+			name: "blpop waits then rpush wakes it",
+			test: func(t *testing.T, s *store.Store) {
+				resultCh := make(chan blpopResult, 1)
+				go func() {
+					value, ok, err := s.BLPop("foo", 0)
+					resultCh <- blpopResult{value, ok, err}
+				}()
+				time.Sleep(5 * time.Millisecond)
+
+				n, err := s.RPush("foo", "a")
+				if err != nil {
+					t.Fatalf("RPush() error = %v, want nil", err)
+				}
+
+				if n != 1 {
+					t.Fatalf("RPush() = %d, want 1", n)
+				}
+
+				//Len should be zero since the item was delivered directly to the waiter.
+				ln, err := s.LLen("foo")
+				if err != nil {
+					t.Fatalf("LLen() error = %v, want nil", err)
+				}
+
+				if ln != 0 {
+					t.Fatalf("LLen() length = %d, want 0", ln)
+				}
+
+				got := waitBLPop(t, resultCh)
+				if got.err != nil {
+					t.Fatalf("BLPop() error = %v, want nil", got.err)
+				}
+
+				if !got.ok {
+					t.Fatalf("BLPop() ok = false, want true")
+				}
+
+				if got.value != "a" {
+					t.Fatalf("BLPop() = %q, want %q", got.value, "a")
+				}
+			},
+		},
+		{
+			name: "blpop timeout",
+			test: func(t *testing.T, s *store.Store) {
+				timeout := 3 * time.Millisecond
+				start := time.Now()
+				value, ok, blpopErr := s.BLPop("foo", timeout)
+				elapsed := time.Since(start)
+
+				n, err := s.RPush("foo", "a", "b")
+				if err != nil {
+					t.Fatalf("RPush() error = %v, want nil", err)
+				}
+				if n != 2 {
+					t.Fatalf("RPush() = %d, want 2", n)
+				}
+
+				if blpopErr != nil {
+					t.Fatalf("BLPop() error = %v, want nil", blpopErr)
+				}
+
+				if ok {
+					t.Fatalf("BLPop() ok = true, want false")
+				}
+
+				if value != "" {
+					t.Fatalf("BLPop() = %q, want %q", value, "")
+				}
+
+				if elapsed < timeout {
+					t.Fatalf("BLPop() returned after %v, want at least %v", elapsed, timeout)
+				}
+
+				// Len should be two because the timed-out waiter should not receive pushed items.
+				ln, err := s.LLen("foo")
+				if err != nil {
+					t.Fatalf("LLen() error = %v, want nil", err)
+				}
+
+				if ln != 2 {
+					t.Fatalf("LLen() length = %d, want 2", ln)
+				}
+			},
+		},
+		{
+			name: "blpop returns fifo waiter",
+			test: func(t *testing.T, s *store.Store) {
+				firstCh := make(chan blpopResult, 1)
+				secondCh := make(chan blpopResult, 1)
+
+				go func() {
+					value, ok, err := s.BLPop("foo", 0)
+					firstCh <- blpopResult{value, ok, err}
+				}()
+				time.Sleep(2 * time.Millisecond)
+
+				go func() {
+					value, ok, err := s.BLPop("foo", 0)
+					secondCh <- blpopResult{value, ok, err}
+				}()
+				time.Sleep(2 * time.Millisecond)
+
+				n, err := s.RPush("foo", "a")
+				if err != nil {
+					t.Fatalf("RPush() error = %v, want nil", err)
+				}
+
+				if n != 1 {
+					t.Fatalf("RPush() = %d, want 1", n)
+				}
+
+				got := waitBLPop(t, firstCh)
+				if got.err != nil {
+					t.Fatalf("BLPop() error = %v, want nil", got.err)
+				}
+
+				if !got.ok {
+					t.Fatalf("BLPop() ok = false, want true")
+				}
+
+				if got.value != "a" {
+					t.Fatalf("BLPop() = %q, want %q", got.value, "a")
+				}
+
+				assertNoBLPop(t, secondCh)
+
+				n, err = s.RPush("foo", "b")
+				if err != nil {
+					t.Fatalf("RPush() error = %v, want nil", err)
+				}
+
+				if n != 1 {
+					t.Fatalf("RPush() = %d, want 1", n)
+				}
+
+				got = waitBLPop(t, secondCh)
+				if got.err != nil {
+					t.Fatalf("BLPop() error = %v, want nil", got.err)
+				}
+
+				if !got.ok {
+					t.Fatalf("BLPop() ok = false, want true")
+				}
+
+				if got.value != "b" {
+					t.Fatalf("BLPop() = %q, want %q", got.value, "b")
+				}
+
+				ln, err := s.LLen("foo")
+				if err != nil {
+					t.Fatalf("LLen() error = %v, want nil", err)
+				}
+
+				if ln != 0 {
+					t.Fatalf("LLen() = %d, want 0", ln)
+				}
+			},
+		},
 	}
+
+	runStoreTests(t, testCases)
 }
 
 func TestStoreReadAndPushExpired(t *testing.T) {
 	expiredAt := time.Now().Add(-time.Second)
 
-	testCases := []struct {
-		name string
-		dict *dict.Dict
-		test func(t *testing.T, s *store.Store)
-	}{
+	testCases := []storeTestCase{
 		{
-			name: "get string treats expired key as missing",
-			dict: dictWithEntry("foo", dict.Entry{
-				Value:     dict.Value{Kind: dict.KindString, Data: "hello"},
-				ExpiresAt: expiredAt,
-			}),
+			name:  "get string treats expired key as missing",
+			setup: setupString("foo", "hello", expiredAt),
 			test: func(t *testing.T, s *store.Store) {
 				v, ok, err := s.GetString("foo")
 
@@ -597,88 +762,8 @@ func TestStoreReadAndPushExpired(t *testing.T) {
 			},
 		},
 		{
-			name: "range and len treat expired list as missing",
-			dict: dictWithEntry("foo", dict.Entry{
-				Value:     dict.Value{Kind: dict.KindList, Data: list.New("a", "b")},
-				ExpiresAt: expiredAt,
-			}),
-			test: func(t *testing.T, s *store.Store) {
-				items, err := s.LRange("foo", 0, -1)
-				if err != nil {
-					t.Fatalf("LRange() error = %v, want nil", err)
-				}
-
-				if len(items) != 0 {
-					t.Fatalf("LRange() length = %d, want 0", len(items))
-				}
-
-				n, err := s.LLen("foo")
-				if err != nil {
-					t.Fatalf("LLen() error = %v, want nil", err)
-				}
-
-				if n != 0 {
-					t.Fatalf("LLen() = %d, want 0", n)
-				}
-			},
-		},
-		{
-			name: "pop treats expired list as missing",
-			dict: dictWithEntry("foo", dict.Entry{
-				Value:     dict.Value{Kind: dict.KindList, Data: list.New("a", "b")},
-				ExpiresAt: expiredAt,
-			}),
-			test: func(t *testing.T, s *store.Store) {
-				v, ok, err := s.LPop("foo")
-				if err != nil {
-					t.Fatalf("LPop() error = %v, want nil", err)
-				}
-
-				if ok {
-					t.Fatalf("LPop() ok = true, want false")
-				}
-
-				if v != "" {
-					t.Fatalf("LPop() = %q, want %q", v, "")
-				}
-
-				items, err := s.LPopN("foo", 1)
-				if err != nil {
-					t.Fatalf("LPopN() error = %v, want nil", err)
-				}
-
-				if len(items) != 0 {
-					t.Fatalf("LPopN() length = %d, want 0", len(items))
-				}
-			},
-		},
-		{
-			name: "blocking pop treats expired list as missing",
-			dict: dictWithEntry("foo", dict.Entry{
-				Value:     dict.Value{Kind: dict.KindList, Data: list.New("a")},
-				ExpiresAt: expiredAt,
-			}),
-			test: func(t *testing.T, s *store.Store) {
-				v, ok, err := s.BLPop("foo", time.Millisecond)
-				if err != nil {
-					t.Fatalf("BLPop() error = %v, want nil", err)
-				}
-
-				if ok {
-					t.Fatalf("BLPop() ok = true, want false")
-				}
-
-				if v != "" {
-					t.Fatalf("BLPop() = %q, want %q", v, "")
-				}
-			},
-		},
-		{
-			name: "rpush treats expired string as missing",
-			dict: dictWithEntry("foo", dict.Entry{
-				Value:     dict.Value{Kind: dict.KindString, Data: "hello"},
-				ExpiresAt: expiredAt,
-			}),
+			name:  "rpush treats expired string as missing",
+			setup: setupString("foo", "hello", expiredAt),
 			test: func(t *testing.T, s *store.Store) {
 				n, err := s.RPush("foo", "a", "b")
 				if err != nil {
@@ -701,11 +786,8 @@ func TestStoreReadAndPushExpired(t *testing.T) {
 			},
 		},
 		{
-			name: "lpush treats expired string as missing",
-			dict: dictWithEntry("foo", dict.Entry{
-				Value:     dict.Value{Kind: dict.KindString, Data: "hello"},
-				ExpiresAt: expiredAt,
-			}),
+			name:  "lpush treats expired string as missing",
+			setup: setupString("foo", "hello", expiredAt),
 			test: func(t *testing.T, s *store.Store) {
 				n, err := s.LPush("foo", "a", "b")
 				if err != nil {
@@ -728,21 +810,59 @@ func TestStoreReadAndPushExpired(t *testing.T) {
 			},
 		},
 	}
+	runStoreTests(t, testCases)
+}
+
+func runStoreTests(t *testing.T, testCases []storeTestCase) {
+	t.Helper()
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := store.New(tc.dict)
+			s := store.New()
+
+			if tc.setup != nil {
+				if err := tc.setup(s); err != nil {
+					t.Fatalf("setup() error = %v, want nil", err)
+				}
+			}
+
 			tc.test(t, s)
 		})
 	}
 }
 
-func dictWithValue(key string, value dict.Value) *dict.Dict {
-	return dictWithEntry(key, dict.Entry{Value: value})
+func waitBLPop(t *testing.T, ch <-chan blpopResult) blpopResult {
+	t.Helper()
+
+	select {
+	case got := <-ch:
+		return got
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("BLPop() did not return")
+		return blpopResult{}
+	}
 }
 
-func dictWithEntry(key string, entry dict.Entry) *dict.Dict {
-	d := dict.New()
-	d.Set(key, entry)
-	return d
+func assertNoBLPop(t *testing.T, ch <-chan blpopResult) {
+	t.Helper()
+
+	select {
+	case got := <-ch:
+		t.Fatalf("BLPop() returned %#v, want still blocked", got)
+	case <-time.After(10 * time.Millisecond):
+	}
+}
+
+func setupString(key, value string, expiresAt time.Time) func(*store.Store) error {
+	return func(s *store.Store) error {
+		s.SetString(key, value, expiresAt)
+		return nil
+	}
+}
+
+func setupList(key string, items ...string) func(*store.Store) error {
+	return func(s *store.Store) error {
+		_, err := s.RPush(key, items...)
+		return err
+	}
 }

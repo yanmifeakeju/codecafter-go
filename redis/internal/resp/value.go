@@ -6,15 +6,6 @@ import (
 	"strings"
 )
 
-// import (
-// 	"bufio"
-// 	"errors"
-// 	"fmt"
-// 	"io"
-// 	"strconv"
-// 	"strings"
-// )
-
 type resType byte
 
 const (

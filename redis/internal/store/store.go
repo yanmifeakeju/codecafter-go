@@ -5,14 +5,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yanmifeakeju/codecafter-go/redis/internal/dict"
 	"github.com/yanmifeakeju/codecafter-go/redis/internal/list"
 )
 
 var ErrWrongType = errors.New("wrong type")
 
 type Store struct {
-	dict    *dict.Dict
+	values  map[string]Entry
 	waiters map[string][]*waiter
 	mu      sync.Mutex
 }
@@ -21,12 +20,9 @@ type waiter struct {
 	ch chan string
 }
 
-func New(d *dict.Dict) *Store {
-	if d == nil {
-		d = dict.New()
-	}
+func New() *Store {
 	return &Store{
-		dict:    d,
+		values:  map[string]Entry{},
 		waiters: map[string][]*waiter{},
 	}
 }
@@ -35,7 +31,7 @@ func (s *Store) SetString(key, value string, expiresAt time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.dict.Set(key, dict.Entry{Value: dict.Value{Kind: dict.KindString, Data: value}, ExpiresAt: expiresAt})
+	s.values[key] = Entry{Value: Value{Kind: KindString, Data: value}, ExpiresAt: expiresAt}
 }
 
 func (s *Store) GetString(key string) (string, bool, error) {
@@ -47,7 +43,7 @@ func (s *Store) GetString(key string) (string, bool, error) {
 		return "", false, nil
 	}
 
-	if entry.Value.Kind != dict.KindString {
+	if entry.Value.Kind != KindString {
 		return "", false, ErrWrongType
 	}
 
@@ -63,7 +59,12 @@ func (s *Store) Delete(key string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.dict.Delete(key)
+	if _, ok := s.values[key]; !ok {
+		return false
+	}
+
+	delete(s.values, key)
+	return true
 }
 
 func (s *Store) RPush(key string, items ...string) (int, error) {
@@ -79,7 +80,7 @@ func (s *Store) RPush(key string, items ...string) (int, error) {
 		l = list.New()
 		created = true
 	} else {
-		if entry.Value.Kind != dict.KindList {
+		if entry.Value.Kind != KindList {
 			return 0, ErrWrongType
 		}
 
@@ -104,12 +105,12 @@ func (s *Store) RPush(key string, items ...string) (int, error) {
 	delivered := pushed - len(items)
 	n := l.RPush(items...)
 	if created {
-		s.dict.Set(key, dict.Entry{
-			Value: dict.Value{
-				Kind: dict.KindList,
+		s.values[key] = Entry{
+			Value: Value{
+				Kind: KindList,
 				Data: l,
 			},
-		})
+		}
 	}
 
 	return n + delivered, nil
@@ -128,7 +129,7 @@ func (s *Store) LPush(key string, items ...string) (int, error) {
 		l = list.New()
 		created = true
 	} else {
-		if entry.Value.Kind != dict.KindList {
+		if entry.Value.Kind != KindList {
 			return 0, ErrWrongType
 		}
 
@@ -153,12 +154,12 @@ func (s *Store) LPush(key string, items ...string) (int, error) {
 	delivered := pushed - len(items)
 	n := l.LPush(items...)
 	if created {
-		s.dict.Set(key, dict.Entry{
-			Value: dict.Value{
-				Kind: dict.KindList,
+		s.values[key] = Entry{
+			Value: Value{
+				Kind: KindList,
 				Data: l,
 			},
-		})
+		}
 	}
 
 	return n + delivered, nil
@@ -175,7 +176,7 @@ func (s *Store) LRange(key string, start, end int) ([]string, error) {
 		return res, nil
 	}
 
-	if entry.Value.Kind != dict.KindList {
+	if entry.Value.Kind != KindList {
 		return res, ErrWrongType
 	}
 
@@ -202,7 +203,7 @@ func (s *Store) LLen(key string) (int, error) {
 		return 0, nil
 	}
 
-	if entry.Value.Kind != dict.KindList {
+	if entry.Value.Kind != KindList {
 		return 0, ErrWrongType
 	}
 
@@ -230,7 +231,7 @@ func (s *Store) LPopN(key string, count int) ([]string, error) {
 		return []string{}, nil
 	}
 
-	if entry.Value.Kind != dict.KindList {
+	if entry.Value.Kind != KindList {
 		return nil, ErrWrongType
 	}
 
@@ -242,15 +243,15 @@ func (s *Store) LPopN(key string, count int) ([]string, error) {
 	return l.LPopN(count), nil
 }
 
-func (s *Store) getEntry(key string) (dict.Entry, bool) {
-	entry, ok := s.dict.Get(key)
+func (s *Store) getEntry(key string) (Entry, bool) {
+	entry, ok := s.values[key]
 	if !ok {
-		return dict.Entry{}, false
+		return Entry{}, false
 	}
 
 	if !entry.ExpiresAt.IsZero() && time.Now().After(entry.ExpiresAt) {
-		s.dict.Delete(key)
-		return dict.Entry{}, false
+		delete(s.values, key)
+		return Entry{}, false
 	}
 
 	return entry, true
@@ -303,7 +304,7 @@ func (s *Store) lpopLocked(key string) (string, bool, error) {
 		return "", false, nil
 	}
 
-	if entry.Value.Kind != dict.KindList {
+	if entry.Value.Kind != KindList {
 		return "", false, ErrWrongType
 	}
 
