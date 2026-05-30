@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
+	"math"
 )
 
 type Decoder struct {
@@ -81,12 +81,55 @@ func (dec *Decoder) readLength(kind string) (int64, error) {
 		return 0, err
 	}
 
-	n, err := strconv.ParseInt(string(buf), 10, 64)
+	n, err := parseLength(buf)
 	if err != nil {
-		return 0, fmt.Errorf("resp: invalid %s length %q: %w", kind, string(buf), err)
+		return 0, fmt.Errorf("resp: invalid %s length %q: %w", kind, buf, err)
 	}
 
 	return n, nil
+}
+
+func parseLength(b []byte) (int64, error) {
+	if len(b) == 0 {
+		return 0, errors.New("empty length")
+	}
+
+	negative := b[0] == '-'
+	if negative {
+		if len(b) == 1 {
+			return 0, errors.New("missing length digits")
+		}
+		b = b[1:]
+	}
+
+	// Parse the magnitude as uint64 so we can represent the absolute value of
+	// math.MinInt64, which is one greater than math.MaxInt64.
+	var n uint64
+	max := uint64(math.MaxInt64)
+	if negative {
+		max++
+	}
+
+	for _, c := range b {
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("invalid digit %q", c)
+		}
+
+		digit := uint64(c - '0')
+		if n > (max-digit)/10 {
+			return 0, errors.New("length out of range")
+		}
+		n = n*10 + digit
+	}
+
+	if negative {
+		if n == max {
+			return -int64(max-1) - 1, nil
+		}
+		return -int64(n), nil
+	}
+
+	return int64(n), nil
 }
 
 func readBulkStringValue(dec *Decoder) (Value, error) {
@@ -102,16 +145,21 @@ func readBulkStringValue(dec *Decoder) (Value, error) {
 		return Value{}, fmt.Errorf("resp: invalid bulk string length %d", n)
 	}
 
-	if n > int64(^uint(0)>>1)-2 {
+	if n > int64(math.MaxInt)-2 {
 		return Value{}, fmt.Errorf("resp: bulk string length %d is too large", n)
 	}
 
-	buf := make([]byte, int(n)+2)
+	buf := make([]byte, int(n))
 	if err := dec.readValue(buf); err != nil {
 		return Value{}, err
 	}
 
-	if buf[n] != '\r' || buf[n+1] != '\n' {
+	var crlf [2]byte
+	if err := dec.readValue(crlf[:]); err != nil {
+		return Value{}, err
+	}
+
+	if crlf[0] != '\r' || crlf[1] != '\n' {
 		return Value{}, fmt.Errorf("resp: expected CRLF after bulk string")
 	}
 
@@ -132,7 +180,7 @@ func readArrayValue(dec *Decoder) (Value, error) {
 		return Value{}, fmt.Errorf("resp: invalid array length %d", n)
 	}
 
-	if n > int64(^uint(0)>>1) {
+	if n > int64(math.MaxInt) {
 		return Value{}, fmt.Errorf("resp: array length %d is too large", n)
 	}
 

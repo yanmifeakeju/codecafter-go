@@ -27,6 +27,11 @@ func TestEncoderEncode(t *testing.T) {
 			want:  ":42\r\n",
 		},
 		{
+			name:  "negative integer",
+			value: IntValue(-1),
+			want:  ":-1\r\n",
+		},
+		{
 			name:  "bulk string",
 			value: BulkStringValue("hello"),
 			want:  "$5\r\nhello\r\n",

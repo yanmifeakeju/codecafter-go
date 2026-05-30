@@ -9,9 +9,22 @@ func New(items ...string) *List {
 }
 
 func (l *List) LPush(items ...string) int {
-	for _, item := range items {
-		l.items = append([]string{item}, l.items...)
+	newNum := len(items)
+
+	if newNum == 0 {
+		return len(l.items)
 	}
+
+	newItems := make([]string, newNum+len(l.items))
+
+	// LPUSH inserts each argument at the head, so LPUSH key a b produces [b, a].
+	for i, item := range items {
+		newItems[newNum-1-i] = item
+	}
+
+	copy(newItems[newNum:], l.items)
+	l.items = newItems
+
 	return len(l.items)
 }
 
@@ -55,6 +68,7 @@ func (l *List) LPop() (string, bool) {
 	}
 
 	result := l.items[0]
+	l.items[0] = "" // Allows the garbage collector to reclaim the string memory
 	l.items = l.items[1:]
 	return result, true
 }
@@ -68,7 +82,13 @@ func (l *List) LPopN(count int) []string {
 		count = len(l.items)
 	}
 
-	items := append([]string(nil), l.items[:count]...)
+	items := make([]string, count)
+
+	for i := 0; i < count; i++ {
+		items[i] = l.items[i]
+		l.items[i] = "" // Zero out references to allow GC collection
+	}
+
 	l.items = l.items[count:]
 
 	return items

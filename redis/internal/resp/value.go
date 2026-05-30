@@ -3,6 +3,7 @@ package resp
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -76,39 +77,85 @@ func ArrayValue(v []Value) Value {
 }
 
 func (v Value) WriteTo(w io.Writer) (int64, error) {
-	var n int
 	var err error
 
 	switch v.Type {
 	case SimpleString:
-		n, err = fmt.Fprintf(w, "+%s\r\n", v.Str)
+		nn, err := writeString(w, '+', v.Str)
+		return int64(nn), err
 	case SimpleError:
-		n, err = fmt.Fprintf(w, "-%s\r\n", v.Str)
+		nn, err := writeString(w, '-', v.Str)
+		return int64(nn), err
 	case Integers:
-		n, err = fmt.Fprintf(w, ":%d\r\n", v.Num)
+		nn, err := writeInt(w, ':', v.Num)
+		return int64(nn), err
 	case BulkString:
 		if v.Null {
-			n, err = fmt.Fprint(w, "$-1\r\n")
-		} else {
-			n, err = fmt.Fprintf(w, "$%d\r\n%s\r\n", len(v.Str), v.Str)
+			nn, err := io.WriteString(w, "$-1\r\n")
+			return int64(nn), err
 		}
+
+		n1, err := writeInt(w, '$', int64(len(v.Str)))
+		if err != nil {
+			return int64(n1), err
+		}
+
+		n2, err := io.WriteString(w, v.Str)
+		if err != nil {
+			return int64(n1 + n2), err
+		}
+
+		n3, err := w.Write([]byte{'\r', '\n'})
+		return int64(n1 + n2 + n3), err
 	case Array:
 		if v.Null {
-			n, err = fmt.Fprint(w, "*-1\r\n")
-		} else {
-			n, err = fmt.Fprintf(w, "*%d\r\n", len(v.Array))
-			if err != nil {
-				return int64(n), err
-			}
-			for _, elem := range v.Array {
-				nn, elemErr := elem.WriteTo(w)
-				n += int(nn)
-				if elemErr != nil {
-					return int64(n), elemErr
-				}
+			nn, err := io.WriteString(w, "*-1\r\n")
+			return int64(nn), err
+		}
+
+		n1, err := writeInt(w, '*', int64(len(v.Array)))
+		if err != nil {
+			return int64(n1), err
+		}
+
+		total := int64(n1)
+		for _, elem := range v.Array {
+			nn, elemErr := elem.WriteTo(w)
+			total += nn
+			if elemErr != nil {
+				return total, elemErr
 			}
 		}
+		return total, nil
 	}
 
-	return int64(n), err
+	return int64(0), err
+}
+
+func writeInt(w io.Writer, prefix byte, val int64) (int, error) {
+	var buf [32]byte
+	b := buf[:0]
+	b = append(b, prefix)
+	b = strconv.AppendInt(b, val, 10)
+	b = append(b, '\r', '\n')
+	return w.Write(b)
+}
+
+func writeString(w io.Writer, prefix byte, s string) (int, error) {
+	var n int
+	n1, err := w.Write([]byte{prefix})
+	n += n1
+	if err != nil {
+		return n, err
+	}
+
+	n2, err := io.WriteString(w, s)
+	n += n2
+	if err != nil {
+		return n, err
+	}
+
+	n3, err := w.Write([]byte{'\r', '\n'})
+	n += n3
+	return n, err
 }

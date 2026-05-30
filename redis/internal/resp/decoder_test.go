@@ -122,3 +122,83 @@ func TestDecoderDecodeNilValue(t *testing.T) {
 		t.Fatal("Decode returned nil error")
 	}
 }
+
+func TestParseLength(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   []byte
+		want    int64
+		wantErr bool
+	}{
+		{
+			name:  "zero",
+			input: []byte("0"),
+			want:  0,
+		},
+		{
+			name:  "positive",
+			input: []byte("123"),
+			want:  123,
+		},
+		{
+			name:  "negative",
+			input: []byte("-1"),
+			want:  -1,
+		},
+		{
+			name:    "empty",
+			input:   []byte(""),
+			wantErr: true,
+		},
+		{
+			name:    "missing digits after negative sign",
+			input:   []byte("-"),
+			wantErr: true,
+		},
+		{
+			name:    "invalid digit",
+			input:   []byte("12a"),
+			wantErr: true,
+		},
+		{
+			name:    "positive overflow",
+			input:   []byte("9223372036854775808"),
+			wantErr: true,
+		},
+		{
+			name:  "minimum int64",
+			input: []byte("-9223372036854775808"),
+			want:  -9223372036854775808,
+		},
+		{
+			name:  "max int64",
+			input: []byte("9223372036854775807"),
+			want:  9223372036854775807,
+		},
+		{
+			name:    "negative overflow",
+			input:   []byte("-9223372036854775809"),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseLength(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("parseLength returned nil error")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("parseLength returned error: %v", err)
+			}
+
+			if got != tt.want {
+				t.Fatalf("parseLength() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
