@@ -1,8 +1,12 @@
 package server
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"net"
+	"syscall"
+	"time"
 
 	"github.com/yanmifeakeju/codecafter-go/redis/internal/resp"
 )
@@ -48,12 +52,27 @@ func (s *Server) Run() error {
 	}
 	defer listener.Close()
 
+	var tempDelay time.Duration // how long to sleep on accept failure
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
+			if errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) {
+				if tempDelay == 0 {
+					tempDelay = 5 * time.Millisecond
+				} else {
+					tempDelay *= 2
+				}
+				if max := 5 * time.Second; tempDelay > max {
+					tempDelay = max
+				}
+
+				log.Printf("server: accept error: %v; retrying in %s", err, tempDelay)
+				time.Sleep(tempDelay)
+				continue
+			}
 			return fmt.Errorf("server: accept connection: %w", err)
 		}
-
+		tempDelay = 0
 		go s.process(conn)
 	}
 }
