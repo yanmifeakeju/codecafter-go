@@ -23,6 +23,22 @@ func (l *Lexer) NextToken() token.Token {
 	l.skipWhitespace()
 
 	switch l.ch {
+	case '|':
+		tok = newToken(token.PIPE, l.ch)
+		l.readChar()
+	case '<':
+		tok = newToken(token.REDIR_IN, l.ch)
+		l.readChar()
+	case '>':
+		if l.peekChar() == '>' {
+			ch := l.ch
+			l.readChar()
+			tok = token.Token{Type: token.APPEND, Value: string(ch) + string(l.ch)}
+			l.readChar()
+		} else {
+			tok = newToken(token.REDIR_OUT, l.ch)
+			l.readChar()
+		}
 	case '\'':
 		l.readChar() // consume opening single quote
 		start := l.position
@@ -99,6 +115,14 @@ func (l *Lexer) readChar() {
 
 	l.position = l.readPosition
 	l.readPosition++
+}
+
+func (l *Lexer) peekChar() byte {
+	if l.readPosition >= len(l.input) {
+		return 0
+	}
+
+	return l.input[l.readPosition]
 }
 
 func newToken(tokenType token.TokenType, ch byte) token.Token {

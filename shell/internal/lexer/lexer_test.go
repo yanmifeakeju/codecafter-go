@@ -80,6 +80,42 @@ func TestNextToken(t *testing.T) {
 			},
 		},
 		{
+			name:  "pipe and redirections",
+			input: `cat < input.txt | grep foo > output.txt >> log.txt`,
+			expected: []struct {
+				expectedType  token.TokenType
+				expectedValue string
+			}{
+				{token.WORD, "cat"},
+				{token.REDIR_IN, "<"},
+				{token.WORD, "input.txt"},
+				{token.PIPE, "|"},
+				{token.WORD, "grep"},
+				{token.WORD, "foo"},
+				{token.REDIR_OUT, ">"},
+				{token.WORD, "output.txt"},
+				{token.APPEND, ">>"},
+				{token.WORD, "log.txt"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			name:  "operators without surrounding spaces",
+			input: `echo hi|wc>out`,
+			expected: []struct {
+				expectedType  token.TokenType
+				expectedValue string
+			}{
+				{token.WORD, "echo"},
+				{token.WORD, "hi"},
+				{token.PIPE, "|"},
+				{token.WORD, "wc"},
+				{token.REDIR_OUT, ">"},
+				{token.WORD, "out"},
+				{token.EOF, ""},
+			},
+		},
+		{
 			name:  "unterminated double quote",
 			input: `echo "unterminated`,
 			expected: []struct {
